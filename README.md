@@ -13,7 +13,7 @@ The Atten-Mixer module (Zhang et al., WSDM 2023) replaces heavy GNN propagation 
 📊 **Results**
 
 * Up to 99% reduction in training time compared to original GC-SAN
-* Maintains competitive recommendation performance (Precision@N, MRR@N)
+* Maintains competitive recommendation performance
 
-**Metrics:** Precision@K, MRR@K
+**Metrics:** Precision@N, MRR@N
 **Datasets:** Diginetica, Yoochoose1_64
