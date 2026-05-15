@@ -1,17 +1,19 @@
-GC-SAN model combined with AMGNN-SR (Atten-Mixer Enhanced Graph Neural Network for Session-based Recommendation). 
+**GC-SAN model integrated with Atten-Mixer (Atten-Mixer Enhanced Graph Neural Network for Session-based Recommendation).**
+*Atten-Mixer mechanism originally proposed by Zhang et al., [WSDM 2023]*
 
-📌 Problem
-Traditional Graph Neural Networks (GNNs) for session-based next-item recommendation suffer from **high computational cost** due to deep message-passing layers, while still struggling to **balance short-term dynamics and long-term intent**, especially under **sparse or noisy session data**.
+📌 **Problem**
+State-of-the-art session-based recommender systems (SBRS) using Graph Neural Networks (GNN) face two main challenges:
 
-✅ Solution
-AMGNN-SR replaces heavy GNN propagation with a **lightweight Atten-Mixer module** — a multi-level attention-based readout that aggregates session semantics in **linear time**.  
-- No multi-hop propagation  
-- One-shot attention pooling  
-- Captures both local transitions and global intent
+* High computational cost due to multi-layer message passing.
+* Difficulty capturing both short-term session dynamics and global session intent, especially under sparse or noisy session data.
 
-📊 Results
-- **99% reduction in training time** vs. GC-SAN on Diginetica  
-- **Precision@20 improved by +0.5%**  
+✅ **Solution**
+The Atten-Mixer module (Zhang et al., WSDM 2023) replaces heavy GNN propagation with a lightweight, multi-level attention-based readout. 
 
-Metrics - MRR@K, Precision@K
-Datasets - diginetica, yoochoose1_64
+📊 **Results**
+
+* Up to 99% reduction in training time compared to original GC-SAN
+* Maintains competitive recommendation performance (Precision@N, MRR@N)
+
+**Metrics:** Precision@K, MRR@K
+**Datasets:** Diginetica, Yoochoose1_64
