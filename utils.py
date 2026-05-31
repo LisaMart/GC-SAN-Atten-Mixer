@@ -59,23 +59,21 @@ def data_masks(all_usr_pois: List[List[int]], item_tail: int) -> Tuple[List[List
     return padded_seqs, masks, len_max
 
 # -------------------- 3. Random train/validation split --------------------
-def split_validation(train_set: Tuple[List, List], valid_portion: float) -> Tuple[Tuple[List, List], Tuple[List, List]]:
-    """
-    Randomly split a dataset into training and validation subsets.
-    train_set: tuple(inputs, labels)
-    valid_portion: fraction to allocate to validation
-    Returns ((train_x, train_y), (valid_x, valid_y))
-    """
-    train_x, train_y = train_set
-    n_samples = len(train_x)
+def split_validation(train_set, valid_portion):
+    all_x, all_y = train_set
+    n_samples = len(all_x)
+
     idx = np.arange(n_samples, dtype="int32")
     np.random.shuffle(idx)
 
     n_train = int(n_samples * (1 - valid_portion))
-    train_x = [train_x[i] for i in idx[:n_train]]
-    train_y = [train_y[i] for i in idx[:n_train]]
-    valid_x = [train_x[i] for i in idx[n_train:]]
-    valid_y = [train_y[i] for i in idx[n_train:]]
+
+    train_x = [all_x[i] for i in idx[:n_train]]
+    train_y = [all_y[i] for i in idx[:n_train]]
+
+    valid_x = [all_x[i] for i in idx[n_train:]]
+    valid_y = [all_y[i] for i in idx[n_train:]]
+
     return (train_x, train_y), (valid_x, valid_y)
 
 # -------------------- 4. Minimal Dataset class --------------------
