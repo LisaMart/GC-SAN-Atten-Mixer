@@ -152,28 +152,22 @@ class SessionGraphWithMultiLevelAttention(Module):
         return hidden
 
     # ---------------- score computation ----------------
-    def compute_scores(self, hidden: torch.Tensor, inputs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """
-        Compute logits for all items.
-        hidden: [B, L, H] session embeddings
-        inputs: [B, L] item indices
-        mask: [B, L] real item mask
-        returns: [B, n_node-1] logits for all items (skip padding index 0)
-        """
+    def compute_scores(self, hidden, inputs, mask, mask_seen=False):
         idx = mask.sum(1) - 1
         idx = torch.clamp(idx, 0, hidden.size(1) - 1)
-        ht = hidden[torch.arange(hidden.size(0)), idx]          # last item hidden state [B, H]
-
-        attn_out = hidden.mean(1)                               # mean pooling across sequence
-        out = self.linear_transform(torch.cat([attn_out, ht], dim=-1))  # fuse pooled + last [B, H]
-
-        # Dot-product with all embeddings (skip padding)
-        scores = out @ self.embedding.weight[1:].T              # [B, n_node-1]
-
-        # Mask items already seen in session to prevent re-recommendation
-        for b in range(hidden.size(0)):
-            seen = inputs[b].masked_select(mask[b].bool())      # items in session
-            scores[b, seen - 1] = -1e9                         # large negative value
+        ht = hidden[torch.arange(hidden.size(0), device=hidden.device), idx]
+    
+        mask_f = mask.float().unsqueeze(-1)
+        attn_out = (hidden * mask_f).sum(1) / mask_f.sum(1).clamp(min=1.0)
+    
+        out = self.linear_transform(torch.cat([attn_out, ht], dim=-1))
+        scores = out @ self.embedding.weight[1:].T
+    
+        if mask_seen:
+            for b in range(hidden.size(0)):
+                seen = inputs[b].masked_select(mask[b].bool())
+                scores[b, seen - 1] = -1e9
+    
         return scores
 
     # ---------------- loss with diversity regularizer ----------------
@@ -200,12 +194,11 @@ def forward(model: SessionGraphWithMultiLevelAttention, idx: int, data) -> Tuple
     targets = trans_to_cuda(torch.tensor(targets, dtype=torch.long))
 
     hidden = model(inputs, None, mask)
-    scores = model.compute_scores(hidden, inputs, mask)
+    scores = model.compute_scores(hidden, inputs, mask, mask_seen=False)
     return targets, scores
 
 # -------------------- 7. Train + evaluate one epoch --------------------
-def train_test(model: SessionGraphWithMultiLevelAttention, train_data, test_data, epoch: int, batch_size: int) -> Dict:
-    """Perform one epoch of training and testing, return metrics"""
+def train_test(model, train_data, test_data, epoch, batch_size):
     print('start training:', datetime.datetime.now())
     model.train()
     total_loss = 0.0
@@ -217,22 +210,49 @@ def train_test(model: SessionGraphWithMultiLevelAttention, train_data, test_data
         loss = model.loss_function(scores, targets - 1)
         loss.backward()
         model.optimizer.step()
-        model.scheduler.step()
         total_loss += loss.item()
+
+    model.scheduler.step()
 
     avg_loss = total_loss / len(slices)
     print(f'\tTotal Loss:\t{total_loss:.4f}\n\tAverage Loss:\t{avg_loss:.4f}')
 
-    # Evaluation
     print('start predicting:', datetime.datetime.now())
     model.eval()
+
     top_K = [5, 10, 20]
     metrics = {K: {"precision": [], "mrr": []} for K in top_K}
-    slices = test_data.generate_batch(batch_size)
 
-    for i in tqdm(slices, desc="Testing"):
-        targets, scores = forward(model, i, test_data)
-        scores  = trans_to_cpu(scores).detach().numpy()
-        targets = trans_to_cpu(targets).long().numpy() - 1  # 0-based
+    with torch.no_grad():
+        slices = test_data.generate_batch(batch_size)
 
-    return metrics
+        for i in tqdm(slices, desc="Testing"):
+            targets, scores = forward(model, i, test_data)
+            targets = targets - 1
+
+            max_k = max(top_K)
+            top_items = scores.topk(max_k, dim=1).indices
+
+            for K in top_K:
+                pred = top_items[:, :K]
+                hit_matrix = pred.eq(targets.view(-1, 1))
+                hit = hit_matrix.any(dim=1)
+
+                metrics[K]["precision"].append(hit.float().mean().item() * 100)
+
+                ranks = hit_matrix.float().argmax(dim=1) + 1
+                rr = torch.where(
+                    hit,
+                    1.0 / ranks.float(),
+                    torch.zeros_like(ranks, dtype=torch.float)
+                )
+                metrics[K]["mrr"].append(rr.mean().item() * 100)
+
+    result = {"loss": avg_loss}
+    for K in top_K:
+        result[K] = {
+            "precision": float(np.mean(metrics[K]["precision"])),
+            "mrr": float(np.mean(metrics[K]["mrr"]))
+        }
+
+    return result
